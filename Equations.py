@@ -3,7 +3,7 @@ import numpy as np
 
 class Equation():
     def __init__ (self, spatial_size,
-                  total_time: float, temporal_size: float, alpha: float):
+                  total_time: float, temporal_size: int, alpha: float):
         
         self.total_time = total_time
         self.temporal_size = temporal_size
@@ -24,7 +24,7 @@ class Equation():
 
 class HeatEquation2D(Equation):
     def __init__(self, spatial_size,
-                 total_time: float, temporal_size: float, alpha: float):
+                 total_time: float, temporal_size: int, alpha: float):
         
         super().__init__(spatial_size, total_time, temporal_size, alpha)
         self.num_x, self.num_y = self.spatial_size[0], self.spatial_size[1]
