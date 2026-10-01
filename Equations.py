@@ -1,9 +1,10 @@
 import abc
 import numpy as np
+import math
 
 class Equation():
     def __init__ (self, spatial_size,
-                  total_time, temporal_size, alpha):
+                  total_time: float, temporal_size: float, alpha: float):
         
         self.total_time = total_time
         self.temporal_size = temporal_size
@@ -22,11 +23,13 @@ class Equation():
     def solve(self):
         pass
 
-
 class HeatEquation2D(Equation):
-    def __init__(self, spatial_size, total_time, temporal_size, alpha):
+    def __init__(self, spatial_size,
+                 total_time: float, temporal_size: float, alpha: float):
+        
         super().__init__(spatial_size, total_time, temporal_size, alpha)
         self.nx, self.ny = self.spatial_size[0], self.spatial_size[1]
+        
         self.dx = 1.0 / (self.nx - 1)
         self.dy = 1.0 / (self.ny - 1)
         
@@ -48,31 +51,30 @@ class HeatEquation2D(Equation):
         u0 = self.initialize_equation()
         u = np.zeros((self.temporal_size, self.ny, self.nx))
         u[0] = u0
-        
+
+        dt_max = 0.5 / (self.alpha * (1/self.dx**2 + 1/self.dy**2))
+        n_sub = math.ceil(self.dt / (0.9 * dt_max))
+        h = self.dt / n_sub
+        cx = self.alpha * h / self.dx**2
+        cy = self.alpha * h / self.dy**2
+
+        cur = u0.copy()
         for t in range(1, self.temporal_size):
-            u_prev = u[t-1]
-            u_next = u_prev.copy()
-
-            u_next[1:-1, 1:-1] = u_prev[1:-1, 1:-1] + self.alpha * self.dt / self.dx**2 * (
-                u_prev[2:, 1:-1] - 2*u_prev[1:-1, 1:-1] + u_prev[:-2, 1:-1]
-            ) + self.alpha * self.dt / self.dy**2 * (
-                u_prev[1:-1, 2:] - 2*u_prev[1:-1, 1:-1] + u_prev[1:-1, :-2]
-            )
-
-            u_next[:, 0] = u0[:, 0]
-            u_next[:, -1] = u0[:, -1]
-            u_next[0, :] = u0[0, :]
-            u_next[-1, :] = u0[-1, :]
-
-            u[t] = u_next
-
+            for _ in range(n_sub):
+                next = cur.copy()
+                next[1:-1, 1:-1] = (cur[1:-1, 1:-1]
+                                    + cx * (cur[2:, 1:-1] - 2*cur[1:-1, 1:-1] + cur[:-2, 1:-1])
+                                    + cy * (cur[1:-1, 2:] - 2*cur[1:-1, 1:-1] + cur[1:-1, :-2]))
+                cur = next
+            u[t] = cur
         return u
     
 class HeatEquationDataset:
-    def __init__(self, equation_class, num_samples, **kwargs):
+    def __init__(self, equation_class, num_samples: int, **kwargs):
         self.num_samples = num_samples
         self.equation_class = equation_class
         self.kwargs = ( kwargs )
+        
         self.data = self._generate_data()
 
     def _generate_data(self):
