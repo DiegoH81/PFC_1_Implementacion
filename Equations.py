@@ -68,7 +68,7 @@ class HeatEquation2D(Equation):
             u[t] = u_next
             
         return u
-    
+
 class HeatEquationDataset:
     def __init__(self, equation_class, num_samples: int, **kwargs):
         self.num_samples = num_samples
