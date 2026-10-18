@@ -7,10 +7,10 @@ class HeatEquationPainter:
 
     def plot_solution(self, simulation_data, time_step, title):
         
-        fig, ax = plt.subplots(figsize=(6, 5))
+        fig, ax = plt.subplots(figsize = (6, 5))
         
         frame_data = simulation_data[time_step]
-        im = ax.imshow(frame_data, cmap=self.cmap, origin="lower", aspect="auto")
+        im = ax.imshow(frame_data, cmap = self.cmap, origin = "lower", aspect = "auto")
         
         fig.colorbar(im, ax=ax, label="Temp")
         ax.set_title(title)
