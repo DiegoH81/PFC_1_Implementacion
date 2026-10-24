@@ -1,14 +1,9 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset
-import matplotlib.pyplot as plt
+from torch.utils.data import TensorDataset, DataLoader, random_split
 from pydmd import DMD
-
-
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-from typing import Dict
 
 
 import Equations as eq
@@ -59,6 +54,12 @@ class DMD_DeepONet(nn.Module):
                 layers.append(nn.Tanh())
         return nn.Sequential(*layers)
     
+    def forward(self, f, modes, dynamics, x):
+        y_dmd = self.branch_dmd_modes(modes) * self.branch_dmd_dynamics(dynamics)
+        y_br = self.branch(f) * y_dmd
+        y_tr = self.trunk(x)
+        y_out = y_br @ y_tr
+        return self.final_linear(y_out)  
     
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -74,28 +75,28 @@ if __name__ == "__main__":
     
     print("Generating dataset")
     dataset = eq.HeatEquationDataset( equation_class = eq.HeatEquation2D,
-                                     num_samples = n_samples, spatial_size=(dim_malla, dim_malla),
+                                     num_samples = n_samples, spatial_size = (dim_malla, dim_malla),
                                      total_time = total_time, temporal_size = t_size,
                                      alpha = alpha )
 
     system_painter = Painter.HeatEquationPainter()
-    system_painter.plot_solution(dataset[10], 10, "Testing draw")
+    #system_painter.plot_solution(dataset[10], 10, "Testing draw")
     
     
     print("Adding DMD")
     processed_data = []
     
     for sol in dataset:
-        init_state = torch.tensor(sol[0], dtype = torch.float32).flatten()
-        end_state = torch.tensor(sol[-1], dtype = torch.float32).flatten()
+        init_state = torch.tensor(sol[0], dtype = torch.float32)#.flatten()
+        end_state = torch.tensor(sol[-1], dtype = torch.float32)#.flatten()
         
         sol_tensor = torch.tensor(sol, dtype = torch.float32)
         dmd_processor = DMDPart(sol, rank = 10)
         
         modes_list, dynamics_list = dmd_processor.method()
         
-        modes_tensor = torch.tensor(np.array(modes_list), dtype = torch.float32).flatten()
-        dynamics_tensor = torch.tensor(np.array(dynamics_list), dtype = torch.float32).flatten()
+        modes_tensor = torch.tensor(np.array(modes_list), dtype = torch.float32)#.flatten()
+        dynamics_tensor = torch.tensor(np.array(dynamics_list), dtype = torch.float32)#.flatten()
         
         processed_data.append({
             "init_state": init_state,
@@ -103,3 +104,67 @@ if __name__ == "__main__":
             "modes": modes_tensor,
             "dynamics": dynamics_tensor
         })
+        
+    init_all = torch.stack([d["init_state"] for d in processed_data])
+    end_all = torch.stack([d["end_state"]  for d in processed_data])
+    modes_all = torch.stack([d["modes"]     for d in processed_data])
+    dyn_all = torch.stack([d["dynamics"]  for d in processed_data])
+
+    full_ds = TensorDataset(init_all, modes_all, dyn_all, end_all)
+    n_train = int(0.8 * len(full_ds))
+    train_ds, val_ds = random_split(full_ds, [n_train, len(full_ds) - n_train])
+
+    batch_size = 32
+    train_loader = DataLoader(train_ds, batch_size = batch_size, shuffle = True)
+    val_loader = DataLoader(val_ds,   batch_size = batch_size, shuffle = False)
+    
+    model = DMD_DeepONet( branch_dim = [dim_malla, 100, 100],
+                          branch_dmd_dim_modes = [100, 100, 100],
+                          branch_dmd_dim_dynamics = [50, 100, 100],
+                          trunk_dim = [2, 100, 100], output_dim = dim_malla).to(device)
+
+    xx = torch.linspace(0, 1, dim_malla)
+    gx, gy = torch.meshgrid(xx, xx, indexing="ij")
+    grid = torch.stack([gx.ravel(), gy.ravel()], dim=1).to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience = 5, factor = 0.5)
+
+
+    best_val = float("inf")
+    train_losses, val_losses = [], []
+
+    for epoch in range(n_epochs):
+        model.train()
+        total = 0.0
+        for f, modes, dyn, y in train_loader:
+            f, modes, dyn, y = f.to(device), modes.to(device), dyn.to(device), y.to(device)
+
+            optimizer.zero_grad()
+            pred = model(f, modes, dyn, grid)
+            loss = ((pred - y) ** 2).mean()
+            loss.backward()
+            optimizer.step()
+            total += loss.item()
+
+        train_loss = total / len(train_loader)
+        train_losses.append(train_loss)
+        scheduler.step(train_loss)
+
+        model.eval()
+        with torch.no_grad():
+            k = np.random.randint(0, len(val_ds))
+            f, modes, dyn, y = (t.unsqueeze(0).to(device) for t in val_ds[k])
+            val_loss = ((model(f, modes, dyn, grid) - y) ** 2).mean().item()
+        val_losses.append(val_loss)
+
+        val_loss = total / len(val_loader)
+        val_losses.append(val_loss)
+
+        print(f"Epoch {epoch+1}/{n_epochs} | train {train_loss:.4f} | val {val_loss:.4f}")
+        
+    idx = list(range(0, n_epochs, 10))
+    table = pd.DataFrame({"Epoch": idx,
+                          "Train Loss": [train_losses[i] for i in idx],
+                          "Test Loss": [val_losses[i] for i in idx]})
+    print(table.to_string(index = False))

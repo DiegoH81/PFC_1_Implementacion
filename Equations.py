@@ -57,8 +57,8 @@ class HeatEquation2D(Equation):
             u_next = u_prev.copy()
             
             u_next[1:-1, 1:-1] = u_prev[1:-1, 1:-1] + self.alpha * self.dt / self.dx**2 * (
-                u_prev[2:, 1:-1] - 2*u_prev[1:-1, 1:-1] + u_prev[:-2, 1:-1]
-            ) + self.alpha * self.dt / self.dy**2 * (u_prev[1:-1, 2:] - 2*u_prev[1:-1, 1:-1] + u_prev[1:-1, :-2] )
+                                 u_prev[2:, 1:-1] - 2*u_prev[1:-1, 1:-1] + u_prev[:-2, 1:-1]
+                                 ) + self.alpha * self.dt / self.dy**2 * (u_prev[1:-1, 2:] - 2*u_prev[1:-1, 1:-1] + u_prev[1:-1, :-2] )
             
             u_next[:, 0] = u0[:, 0]
             u_next[:, -1] = u0[:, -1]
@@ -67,6 +67,33 @@ class HeatEquation2D(Equation):
             
             u[t] = u_next
             
+        return u
+
+class HeatEquation2DConst(Equation):
+    def __init__(self, spatial_size, total_time, temporal_size, alpha, n_modes = 500):
+        super().__init__(spatial_size, total_time, temporal_size, alpha)
+        self.num_x, self.num_y = self.spatial_size
+        self.n_modes = n_modes
+
+    def initialize_equation(self):
+        self.T0 = np.random.uniform(0, 1)
+        u0 = np.full((self.num_x, self.num_y), self.T0)
+        u0[0, :] = u0[-1, :] = 0.0
+        u0[:, 0] = u0[:, -1] = 0.0
+        return u0
+
+    def _X(self, s, t):
+        m = np.arange(1, 2 * self.n_modes, 2)
+        decay = np.exp(-self.alpha * np.pi**2 * np.outer(t, m**2))
+        return (4.0 / (np.pi * m)) * decay @ np.sin(np.pi * np.outer(s, m)).T
+
+    def solve(self):
+        u0 = self.initialize_equation()
+        t = np.linspace(0, self.total_time, self.temporal_size)
+        x = np.linspace(0, 1, self.num_x)
+        y = np.linspace(0, 1, self.num_y)
+        u = self.T0 * np.einsum('tx,ty->txy', self._X(x, t), self._X(y, t))
+        u[0] = u0
         return u
 
 class HeatEquationDataset:
