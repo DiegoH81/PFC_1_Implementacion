@@ -30,24 +30,3 @@ class SEP_DeepONet(nn.Module):
             if i < len(dims) - 2:
                 layers.append(nn.Tanh())
         return nn.Sequential(*layers)
-    
-    def forward(self, initial_temp, t, x, y, alpha):
-        p, r = self.latent_dim, self.rank
-        num_t, num_x, num_y, num_alpha = len(t), len(x), len(y), len(alpha)
-
-        y_br = self.branch_net(initial_temp)
-
-        y_t = self.trunk_t(t).view(-1, r, p).permute(2, 0, 1)
-        y_x = self.trunk_x(x).view(-1, r, p).permute(2, 0, 1)
-        y_y = self.trunk_y(y).view(-1, r, p).permute(2, 0, 1)
-        y_alpha = self.trunk_alpha(alpha).view(-1, r, p).permute(2, 0, 1)
-
-
-        y_tx = (y_t[:, :, None, :] * y_x[:, None, :, :]).reshape(p, num_t * num_x, r)
-        y_ya = (y_y[:, :, None, :] * y_alpha[:, None, :, :]).reshape(p, num_y * num_alpha, r)
-
-        y_tr = y_tx @ y_ya.transpose(1, 2)
-        y_tr = y_tr.reshape(p, -1)
-
-        y_out = y_br @ y_tr
-        return y_out.view(-1, num_t, num_x, num_y, num_alpha) + self.output_bias

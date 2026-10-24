@@ -57,8 +57,8 @@ class HeatEquation2D(Equation):
             u_next = u_prev.copy()
             
             u_next[1:-1, 1:-1] = u_prev[1:-1, 1:-1] + self.alpha * self.dt / self.dx**2 * (
-                u_prev[2:, 1:-1] - 2*u_prev[1:-1, 1:-1] + u_prev[:-2, 1:-1]
-            ) + self.alpha * self.dt / self.dy**2 * (u_prev[1:-1, 2:] - 2*u_prev[1:-1, 1:-1] + u_prev[1:-1, :-2] )
+                                 u_prev[2:, 1:-1] - 2*u_prev[1:-1, 1:-1] + u_prev[:-2, 1:-1]
+                                 ) + self.alpha * self.dt / self.dy**2 * (u_prev[1:-1, 2:] - 2*u_prev[1:-1, 1:-1] + u_prev[1:-1, :-2] )
             
             u_next[:, 0] = u0[:, 0]
             u_next[:, -1] = u0[:, -1]
