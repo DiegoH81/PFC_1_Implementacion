@@ -62,6 +62,9 @@ class DMD_DeepONet(nn.Module):
         return self.final_linear(y_out)  
     
 if __name__ == "__main__":
+    torch.manual_seed(1234)
+    np.random.seed(1234)
+    
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     n_samples = 1000
