@@ -75,7 +75,8 @@ if __name__ == "__main__":
     alpha = 0.5
     total_time = 0.05
     
-    n_epochs = 150
+    n_epochs = 100
+    log_every = 10
     learning_rate = 1e-3
     
     print("Generating dataset")
@@ -153,26 +154,26 @@ if __name__ == "__main__":
             total += loss.item()
 
         train_loss = total / len(train_loader)
-        train_losses.append(train_loss)
         scheduler.step(train_loss)
 
-        model.eval()
-        with torch.no_grad():
-            vtot = 0.0
-            for f, modes, dyn, y in val_loader:
-                f, modes, dyn, y = f.to(device), modes.to(device), dyn.to(device), y.to(device)
-                pred = model(f, modes, dyn, grid)
-                vtot += ((pred - y) ** 2).mean().item()
+        # Val
+        if (epoch + 1) % log_every == 0:
+            model.eval()
+            with torch.no_grad():
+                vtot = 0.0
+                for f, modes, dyn, y in val_loader:
+                    f, modes, dyn, y = f.to(device), modes.to(device), dyn.to(device), y.to(device)
+                    pred = model(f, modes, dyn, grid)
+                    vtot += ((pred - y) ** 2).mean().item()
 
-            val_loss = vtot / len(val_loader)
+                val_loss = vtot / len(val_loader)
 
-        val_losses.append(val_loss)
-
-        if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{n_epochs} - train {train_loss:.4f} - val {val_loss:.4f}")
+            train_losses.append(train_loss)
+            val_losses.append(val_loss)
+            print(f"Epoch {epoch + 1}/{n_epochs} - train {train_loss:.4f} - val {val_loss:.4f}")
         
     idx = list(range(0, n_epochs, 10))
     table = pd.DataFrame({"Epoch": idx,
-                          "Train Loss": [train_losses[i] for i in idx],
-                          "Test Loss": [val_losses[i] for i in idx]})
+                          "Train Loss": train_losses,
+                          "Test Loss": val_losses})
     print(table.to_string(index = False))
