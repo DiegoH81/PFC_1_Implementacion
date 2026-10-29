@@ -4,6 +4,8 @@ from torch.utils.data import TensorDataset, DataLoader, random_split
 from pydmd import DMD
 import numpy as np
 import pandas as pd
+import warnings
+warnings.filterwarnings("ignore")
 
 
 import Equations as eq
@@ -62,6 +64,9 @@ class DMD_DeepONet(nn.Module):
         return self.final_linear(y_out)  
     
 if __name__ == "__main__":
+    torch.manual_seed(1234)
+    np.random.seed(1234)
+    
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     n_samples = 1000
@@ -70,14 +75,15 @@ if __name__ == "__main__":
     alpha = 0.5
     total_time = 0.05
     
-    n_epochs = 150
+    n_epochs = 100
+    log_every = 10
     learning_rate = 1e-3
     
     print("Generating dataset")
     dataset = eq.HeatEquationDataset( equation_class = eq.HeatEquation2D,
                                      num_samples = n_samples, spatial_size = (dim_malla, dim_malla),
                                      total_time = total_time, temporal_size = t_size,
-                                     alpha = alpha )
+                                     alpha = alpha, mode = "NORMAL" )
 
     system_painter = Painter.HeatEquationPainter()
     #system_painter.plot_solution(dataset[10], 10, "Testing draw")
@@ -87,16 +93,16 @@ if __name__ == "__main__":
     processed_data = []
     
     for sol in dataset:
-        init_state = torch.tensor(sol[0], dtype = torch.float32)#.flatten()
-        end_state = torch.tensor(sol[-1], dtype = torch.float32)#.flatten()
+        init_state = torch.tensor(sol[0], dtype = torch.float32)
+        end_state = torch.tensor(sol[-1], dtype = torch.float32)
         
         sol_tensor = torch.tensor(sol, dtype = torch.float32)
         dmd_processor = DMDPart(sol, rank = 10)
         
         modes_list, dynamics_list = dmd_processor.method()
         
-        modes_tensor = torch.tensor(np.array(modes_list), dtype = torch.float32)#.flatten()
-        dynamics_tensor = torch.tensor(np.array(dynamics_list), dtype = torch.float32)#.flatten()
+        modes_tensor = torch.tensor(np.array(modes_list), dtype = torch.float32)
+        dynamics_tensor = torch.tensor(np.array(dynamics_list), dtype = torch.float32)
         
         processed_data.append({
             "init_state": init_state,
@@ -116,7 +122,7 @@ if __name__ == "__main__":
 
     batch_size = 32
     train_loader = DataLoader(train_ds, batch_size = batch_size, shuffle = True)
-    val_loader = DataLoader(val_ds,   batch_size = batch_size, shuffle = False)
+    val_loader = DataLoader(val_ds, batch_size = batch_size, shuffle = False)
     
     model = DMD_DeepONet( branch_dim = [dim_malla, 100, 100],
                           branch_dmd_dim_modes = [100, 100, 100],
@@ -133,7 +139,7 @@ if __name__ == "__main__":
 
     best_val = float("inf")
     train_losses, val_losses = [], []
-
+    print("Starting training")
     for epoch in range(n_epochs):
         model.train()
         total = 0.0
@@ -148,23 +154,26 @@ if __name__ == "__main__":
             total += loss.item()
 
         train_loss = total / len(train_loader)
-        train_losses.append(train_loss)
         scheduler.step(train_loss)
 
-        model.eval()
-        with torch.no_grad():
-            k = np.random.randint(0, len(val_ds))
-            f, modes, dyn, y = (t.unsqueeze(0).to(device) for t in val_ds[k])
-            val_loss = ((model(f, modes, dyn, grid) - y) ** 2).mean().item()
-        val_losses.append(val_loss)
+        # Val
+        if (epoch + 1) % log_every == 0:
+            model.eval()
+            with torch.no_grad():
+                vtot = 0.0
+                for f, modes, dyn, y in val_loader:
+                    f, modes, dyn, y = f.to(device), modes.to(device), dyn.to(device), y.to(device)
+                    pred = model(f, modes, dyn, grid)
+                    vtot += ((pred - y) ** 2).mean().item()
 
-        val_loss = total / len(val_loader)
-        val_losses.append(val_loss)
+                val_loss = vtot / len(val_loader)
 
-        print(f"Epoch {epoch+1}/{n_epochs} | train {train_loss:.4f} | val {val_loss:.4f}")
+            train_losses.append(train_loss)
+            val_losses.append(val_loss)
+            print(f"Epoch {epoch + 1}/{n_epochs} - train {train_loss:.4f} - val {val_loss:.4f}")
         
     idx = list(range(0, n_epochs, 10))
     table = pd.DataFrame({"Epoch": idx,
-                          "Train Loss": [train_losses[i] for i in idx],
-                          "Test Loss": [val_losses[i] for i in idx]})
+                          "Train Loss": train_losses,
+                          "Test Loss": val_losses})
     print(table.to_string(index = False))
