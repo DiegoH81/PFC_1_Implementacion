@@ -76,18 +76,25 @@ class HeatEquation2D(Equation):
         u = np.zeros((self.temporal_size, self.num_y, self.num_x))
         u[0] = u0
 
+        dt_out = self.total_time / (self.temporal_size - 1)
+
+        dt_max = 0.9 * 0.5 / (self.alpha * (1 / self.dx**2 + 1 / self.dy**2))
+        n_sub = int(np.ceil(dt_out / dt_max))
+        dt = dt_out / n_sub
+
+        cx = self.alpha * dt / self.dx**2
+        cy = self.alpha * dt / self.dy**2
+
+        cur = u0.copy()
         for step in range(1, self.temporal_size):
-            u_prev = u[step - 1]
-            u_next = u_prev.copy()
-            
-            u_next[1:-1, 1:-1] = u_prev[1:-1, 1:-1] + self.alpha * self.dt / self.dx**2 * (
-                                 u_prev[2:, 1:-1] - 2*u_prev[1:-1, 1:-1] + u_prev[:-2, 1:-1]
-                                 ) + self.alpha * self.dt / self.dy**2 * (u_prev[1:-1, 2:] - 2*u_prev[1:-1, 1:-1] + u_prev[1:-1, :-2] )
-            
-            u_next = self.apply_boundary(u_next, u0)
-            
-            u[step] = u_next
-            
+            for _ in range(n_sub):
+                nxt = cur.copy()
+                nxt[1:-1, 1:-1] = (cur[1:-1, 1:-1]
+                                + cx * (cur[2:, 1:-1] - 2 * cur[1:-1, 1:-1] + cur[:-2, 1:-1])
+                                + cy * (cur[1:-1, 2:] - 2 * cur[1:-1, 1:-1] + cur[1:-1, :-2]))
+                cur = self.apply_boundary(nxt, u0)
+            u[step] = cur
+
         return u
 
 class HeatEquationDataset:
