@@ -7,6 +7,9 @@ import pandas as pd
 import Equations as eq
 import Painter
 
+import os
+os.makedirs("ckpt", exist_ok = True)
+
 
 def derivate(net, s):
     tangent = torch.ones_like(s)
@@ -17,6 +20,14 @@ def derivate(net, s):
     (f, df), (_, d2f) = jvp(inner, (s,), (tangent,))
     
     return f, df, d2f
+
+def save_ckpt(path, epoch):
+    torch.save({"epoch": epoch,
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "scheduler": scheduler.state_dict(),
+                "config": {"hidden": hidden, "latent_dim": latent_dim, "rank": rank}},
+               path)
 
 class SEP_DeepONet(nn.Module):
     def __init__(self, branch_dim, trunk_dim, rank):
@@ -59,7 +70,7 @@ class SEP_DeepONet(nn.Module):
                              self.trunk_t(t), self.trunk_alpha(alpha)) + self.output_bias
     
     
-if __name__ == "__main__":
+if __name__ == "__main__": 
     torch.manual_seed(1234)
     np.random.seed(1234)
 
@@ -88,6 +99,7 @@ if __name__ == "__main__":
                                                total_time = total_time, temporal_size = t_size,
                                                alpha = a, mode = "CONST"))
         
+    
     system_painter = Painter.HeatEquationPainter()
     #system_painter.plot_solution(datasets[0][10], 10, "Testing draw")
     
@@ -124,7 +136,7 @@ if __name__ == "__main__":
                          rank = rank).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = 2000, gamma = 0.9)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.9**(1/2000))
 
     def test_error():
         errs = []
@@ -138,6 +150,7 @@ if __name__ == "__main__":
 
     train_losses, ic_losses, bc_losses, res_losses, val_losses, log_epochs = [], [], [], [], [], []
     
+    best_val = float("inf")
     print("Starting training")
     for epoch in range(n_epochs):
         model.train()
@@ -168,9 +181,13 @@ if __name__ == "__main__":
         scheduler.step()
 
         if (epoch + 1) % log_every == 0:
+            save_ckpt("ckpt/last.pt", epoch + 1)
             model.eval()
             
             val_loss = test_error()
+            if val_loss < best_val:
+                best_val = val_loss
+                save_ckpt("ckpt/best.pt", epoch + 1)
 
             log_epochs.append(epoch)
             train_losses.append(loss.item())
@@ -181,11 +198,17 @@ if __name__ == "__main__":
 
             print(f"Epoch {epoch+1}/{n_epochs} - train {loss.item():.4e} - ic {loss_ic.item():.4e} - "
                   f"bc {loss_bc.item():.4e} - res {loss_res.item():.4e} - L2 {val_loss:.4e}")
+            
+            pd.DataFrame({"Epoch": log_epochs, "Train Loss": train_losses, "IC Loss": ic_losses,
+                          "BC Loss": bc_losses, "Res Loss": res_losses,
+                          "Test L2 Error": val_losses}).to_csv("ckpt/log.csv", index = False)
 
+    save_ckpt("ckpt/final.pt", n_epochs)
     table = pd.DataFrame({"Epoch": log_epochs,
                           "Train Loss": train_losses,
                           "IC Loss": ic_losses,
                           "BC Loss": bc_losses,
                           "Res Loss": res_losses,
                           "Test L2 Error": val_losses})
+    table.to_csv("ckpt/log.csv", index = False)
     print(table.to_string(index = False))
