@@ -36,13 +36,13 @@ class DMDPart:
         return [modes, dynamics]
 
 class DMD_DeepONet(nn.Module):
-    def __init__(self, branch_dim, branch_dmd_dim_modes, branch_dmd_dim_dynamics, trunk_dim, output_dim):
+    def __init__(self, branch_dim, modes_dim, dynamics_dim, trunk_dim, output_dim):
         super().__init__()
         
         self.branch = self.make_mlp(branch_dim)
         
-        self.branch_dmd_modes = self.make_mlp(branch_dmd_dim_modes)
-        self.branch_dmd_dynamics = self.make_mlp(branch_dmd_dim_dynamics)
+        self.branch_dmd_modes = self.make_mlp(modes_dim)
+        self.branch_dmd_dynamics = self.make_mlp(dynamics_dim)
         
         self.trunk = self.make_mlp(trunk_dim)
         
@@ -125,8 +125,8 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_ds, batch_size = batch_size, shuffle = False)
     
     model = DMD_DeepONet( branch_dim = [dim_malla, 100, 100],
-                          branch_dmd_dim_modes = [100, 100, 100],
-                          branch_dmd_dim_dynamics = [50, 100, 100],
+                          modes_dim = [100, 100, 100],
+                          dynamics_dim = [50, 100, 100],
                           trunk_dim = [2, 100, 100], output_dim = dim_malla).to(device)
 
     xx = torch.linspace(0, 1, dim_malla)
@@ -138,7 +138,12 @@ if __name__ == "__main__":
 
 
     best_val = float("inf")
-    train_losses, val_losses = [], []
+    train_losses = []
+    
+    only_1_losses = []
+    test_losses = []
+    relative_loss = []
+    
     print("Starting training")
     for epoch in range(n_epochs):
         model.train()
@@ -157,23 +162,45 @@ if __name__ == "__main__":
         scheduler.step(train_loss)
 
         # Val
-        if (epoch + 1) % log_every == 0:
+        if (epoch) % log_every == 0:
             model.eval()
             with torch.no_grad():
+                # 1 SAMPLE
+                f1, m1, d1, y1 = val_ds[np.random.randint(len(val_ds))]
+                pred1 = model(f1.unsqueeze(0).to(device),
+                            m1.unsqueeze(0).to(device),
+                            d1.unsqueeze(0).to(device), grid)
+                test_1 = ((pred1 - y1.unsqueeze(0).to(device)) ** 2).mean().item()
+
+                # all
                 vtot = 0.0
+                vrel = 0.0
+                vcnt = 0
+
                 for f, modes, dyn, y in val_loader:
                     f, modes, dyn, y = f.to(device), modes.to(device), dyn.to(device), y.to(device)
+                    
                     pred = model(f, modes, dyn, grid)
                     vtot += ((pred - y) ** 2).mean().item()
+                    vrel += ((pred - y).flatten(1).norm(dim=1) / y.flatten(1).norm(dim=1)).sum().item()
+                    vcnt += y.shape[0]
+                    
+                val_full = vtot / len(val_loader)
+                val_rel = vrel / vcnt
 
-                val_loss = vtot / len(val_loader)
 
             train_losses.append(train_loss)
-            val_losses.append(val_loss)
-            print(f"Epoch {epoch + 1}/{n_epochs} - train {train_loss:.4f} - val {val_loss:.4f}")
+            only_1_losses.append(test_1)
+            test_losses.append(val_full)
+            relative_loss.append(val_rel)
+
+            #print(f"Epoch {epoch + 1}/{n_epochs} - train {train_loss:.4f} - val {val_full:.4f} - val 1: {test_1:.4f} "
+            #      f"- rel val {val_rel:.4f} - rel val 1: {test_1:.4f}")
         
     idx = list(range(0, n_epochs, 10))
     table = pd.DataFrame({"Epoch": idx,
                           "Train Loss": train_losses,
-                          "Test Loss": val_losses})
+                          "Test Loss": test_losses,
+                          "Test 1 Loss": only_1_losses,
+                          "L2 error: ": relative_loss})
     print(table.to_string(index = False))
