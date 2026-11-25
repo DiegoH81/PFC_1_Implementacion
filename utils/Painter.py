@@ -100,3 +100,26 @@ class Grid:
         fig.savefig(f"{path}.png", dpi = dpi, bbox_inches = "tight")
         plt.close(fig)
         
+class Animator:
+    def __init__(self, in_grid, in_time_labels, hold = 15, fps = 12):
+        self.grid = in_grid
+        self.time_labels = in_time_labels
+        self.hold = hold
+        self.fps = fps
+
+    def save(self, path, dpi = 130):
+        n_t = len(self.time_labels)
+        self.grid.title = self.time_labels[0]
+        fig = self.grid.build(n_instant = 0, padding = 1.1)
+
+        def update(f):
+            k = min(f, n_t - 1)
+            for row in self.grid.panels:
+                for panel in row:
+                    panel.update(k)
+            self.grid.suptitle.set_text(self.time_labels[k])
+            return []
+
+        anim = FuncAnimation(fig, update, frames = n_t + self.hold, blit = False)
+        anim.save(f"{path}.gif", writer = PillowWriter(fps = self.fps), dpi = dpi)
+        plt.close(fig)
