@@ -7,7 +7,6 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import utils.Equations as eq
-import utils.Painter as Painter
 
 from models.DMD_DeepONet import DMD_DeepONet, DMDPart
 
@@ -34,10 +33,7 @@ if __name__ == "__main__":
                                      total_time = total_time, temporal_size = t_size,
                                      alpha = alpha, mode = "NORMAL" )
 
-    system_painter = Painter.HeatEquationPainter()
-    #system_painter.plot_solution(dataset[10], 10, "Testing draw")
-    
-    
+
     print("Adding DMD")
     processed_data = []
     
@@ -73,14 +69,17 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_ds, batch_size = batch_size, shuffle = True)
     val_loader = DataLoader(val_ds, batch_size = batch_size, shuffle = False)
     
-    model = DMD_DeepONet( branch_dim = [dim_malla, 100, 100],
-                          modes_dim = [100, 100, 100],
-                          dynamics_dim = [50, 100, 100],
-                          trunk_dim = [2, 100, 100], output_dim = dim_malla).to(device)
+    model = DMD_DeepONet( branch_dim = [dim_malla ** 2, 100, 100],
+                          modes_dim = [dim_malla ** 2, 100, 100],
+                          dynamics_dim = [t_size, 100, 100],
+                          trunk_dim = [2, 100, 100] ).to(device)
 
     xx = torch.linspace(0, 1, dim_malla)
     gx, gy = torch.meshgrid(xx, xx, indexing="ij")
     grid = torch.stack([gx.ravel(), gy.ravel()], dim=1).to(device)
+
+    def predict(f, modes, dyn):
+        return model(f, modes, dyn, grid).reshape(-1, dim_malla, dim_malla)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience = 5, factor = 0.5)
@@ -101,7 +100,7 @@ if __name__ == "__main__":
             f, modes, dyn, y = f.to(device), modes.to(device), dyn.to(device), y.to(device)
 
             optimizer.zero_grad()
-            pred = model(f, modes, dyn, grid)
+            pred = predict(f, modes, dyn)
             loss = ((pred - y) ** 2).mean()
             loss.backward()
             optimizer.step()
@@ -112,13 +111,15 @@ if __name__ == "__main__":
 
         # Val
         if (epoch) % log_every == 0:
+            print(f"epoch {epoch}")
+            
             model.eval()
             with torch.no_grad():
                 # 1 SAMPLE
                 f1, m1, d1, y1 = val_ds[np.random.randint(len(val_ds))]
-                pred1 = model(f1.unsqueeze(0).to(device),
-                            m1.unsqueeze(0).to(device),
-                            d1.unsqueeze(0).to(device), grid)
+                pred1 = predict(f1.unsqueeze(0).to(device),
+                                m1.unsqueeze(0).to(device),
+                                d1.unsqueeze(0).to(device))
                 test_1 = ((pred1 - y1.unsqueeze(0).to(device)) ** 2).mean().item()
 
                 # all
@@ -129,7 +130,7 @@ if __name__ == "__main__":
                 for f, modes, dyn, y in val_loader:
                     f, modes, dyn, y = f.to(device), modes.to(device), dyn.to(device), y.to(device)
                     
-                    pred = model(f, modes, dyn, grid)
+                    pred = predict(f, modes, dyn)
                     vtot += ((pred - y) ** 2).mean().item()
                     vrel += ((pred - y).flatten(1).norm(dim=1) / y.flatten(1).norm(dim=1)).sum().item()
                     vcnt += y.shape[0]
@@ -137,14 +138,11 @@ if __name__ == "__main__":
                 val_full = vtot / len(val_loader)
                 val_rel = vrel / vcnt
 
-
             train_losses.append(train_loss)
             only_1_losses.append(test_1)
             test_losses.append(val_full)
             relative_loss.append(val_rel)
 
-            #print(f"Epoch {epoch + 1}/{n_epochs} - train {train_loss:.4f} - val {val_full:.4f} - val 1: {test_1:.4f} "
-            #      f"- rel val {val_rel:.4f} - rel val 1: {test_1:.4f}")
         
     idx = list(range(0, n_epochs, 10))
     table = pd.DataFrame({"Epoch": idx,

@@ -10,7 +10,9 @@ import utils.Painter as Painter
 from models.SEP_DeepONet import SEP_DeepONet, derivate
 
 import os
-os.makedirs("OUT", exist_ok = True)
+os.makedirs("replication_data", exist_ok = True)
+os.makedirs("replication_data/weights", exist_ok = True)
+os.makedirs("replication_data/logs", exist_ok = True)
 
 
 def save_OUT(path, epoch):
@@ -51,10 +53,6 @@ if __name__ == "__main__":
                                                total_time = total_time, temporal_size = t_size,
                                                alpha = a, mode = "CONST"))
         
-    
-    system_painter = Painter.HeatEquationPainter()
-    #system_painter.plot_solution(datasets[0][10], 10, "Testing draw")
-    
     print("Processing test data")
     tests = []
     for a, dataset in zip(alphas, datasets):
@@ -133,13 +131,13 @@ if __name__ == "__main__":
         scheduler.step()
 
         if (epoch + 1) % log_every == 0:
-            save_OUT("OUT/last.pt", epoch + 1)
+            save_OUT("replication_data/weights/last.pt", epoch + 1)
             model.eval()
             
             val_loss = test_error()
             if val_loss < best_val:
                 best_val = val_loss
-                save_OUT("OUT/best.pt", epoch + 1)
+                save_OUT("replication_data/weights/best.pt", epoch + 1)
 
             log_epochs.append(epoch)
             train_losses.append(loss.item())
@@ -153,14 +151,14 @@ if __name__ == "__main__":
             
             pd.DataFrame({"Epoch": log_epochs, "Train Loss": train_losses, "IC Loss": ic_losses,
                           "BC Loss": bc_losses, "Res Loss": res_losses,
-                          "Test L2 Error": val_losses}).to_csv("OUT/log.csv", index = False)
+                          "Test L2 Error": val_losses}).to_csv("replication_data/logs/log.csv", index = False)
 
-    save_OUT("OUT/final.pt", n_epochs)
+    save_OUT("replication_data/weights/final.pt", n_epochs)
     table = pd.DataFrame({"Epoch": log_epochs,
                           "Train Loss": train_losses,
                           "IC Loss": ic_losses,
                           "BC Loss": bc_losses,
                           "Res Loss": res_losses,
                           "Test L2 Error": val_losses})
-    table.to_csv("OUT/log.csv", index = False)
+    table.to_csv("replication_data/logs/log_SEP.csv", index = False)
     print(table.to_string(index = False))
