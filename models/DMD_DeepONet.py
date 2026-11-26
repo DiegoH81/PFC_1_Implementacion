@@ -31,6 +31,7 @@ class DMD_DeepONet(nn.Module):
         super().__init__()
         self.config = dict(branch_dim = branch_dim, modes_dim = modes_dim,
                            dynamics_dim = dynamics_dim, trunk_dim = trunk_dim)
+        
         self.branch = self.make_mlp(branch_dim)
         self.branch_dmd_modes = self.make_mlp(modes_dim)
         self.branch_dmd_dynamics = self.make_mlp(dynamics_dim)
@@ -52,8 +53,10 @@ class DMD_DeepONet(nn.Module):
         y_tr = self.trunk(coords)
         return (b0 * y_dmd) @ y_tr.T + self.bias
     
-    def save(self, path, **extra):
-        torch.save({"model": self.state_dict(), "config": self.config, **extra}, path)
+    def save(self, path, epoch, optimizer, scheduler):
+        torch.save({"epoch": epoch, "model": self.state_dict(), "config": self.config,
+                    "optimizer": optimizer.state_dict(),
+                    "scheduler": scheduler.state_dict()}, path)
 
     @classmethod
     def load(cls, path, device = "cpu"):

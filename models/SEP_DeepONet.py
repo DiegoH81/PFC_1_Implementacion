@@ -55,17 +55,21 @@ class SEP_DeepONet(nn.Module):
         return self.contract(self.branch_net(init), self.trunk_x(x), self.trunk_y(y),
                              self.trunk_t(t), self.trunk_alpha(alpha)) + self.output_bias
     
-    def save(self, path, **extra):
-        torch.save({"model": self.state_dict(), "config": self.config, **extra}, path)
+    def save(self, path, epoch, optimizer, scheduler):
+        torch.save({"epoch": epoch, "model": self.state_dict(), "config": self.config,
+                    "optimizer": optimizer.state_dict(),
+                    "scheduler": scheduler.state_dict()}, path)
 
     @classmethod
     def load(cls, path, device = "cpu"):
         checkpoint = torch.load(path, map_location = device)
         config = checkpoint["config"]
+        
         if "hidden" in config:
             h = config["hidden"]
             config = dict(branch_dim = [1, h, h, h, h, h, config["latent_dim"]],
                           trunk_dim = [1, h, h, h, h, h, config["latent_dim"]], rank = config["rank"])
+        
         net = cls(**config).to(device)
         net.load_state_dict(checkpoint["model"])
         return net.eval()

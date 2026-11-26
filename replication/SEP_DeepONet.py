@@ -13,16 +13,6 @@ import os
 os.makedirs("replication_data", exist_ok = True)
 os.makedirs("replication_data/weights", exist_ok = True)
 os.makedirs("replication_data/logs", exist_ok = True)
-
-
-def save_OUT(path, epoch):
-    torch.save({"epoch": epoch,
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "scheduler": scheduler.state_dict(),
-                "config": {"hidden": hidden, "latent_dim": latent_dim, "rank": rank}},
-               path)
-
     
 if __name__ == "__main__": 
     torch.manual_seed(1234)
@@ -52,7 +42,7 @@ if __name__ == "__main__":
                                                num_samples = n_samples, spatial_size = (dim_malla, dim_malla),
                                                total_time = total_time, temporal_size = t_size,
                                                alpha = a, mode = "CONST"))
-        
+    
     print("Processing test data")
     tests = []
     for a, dataset in zip(alphas, datasets):
@@ -130,14 +120,16 @@ if __name__ == "__main__":
         optimizer.step()
         scheduler.step()
 
-        if (epoch + 1) % log_every == 0:
-            save_OUT("replication_data/weights/last.pt", epoch + 1)
+        if (epoch + 1) % log_every == 0:            
+            model.save("replication_data/weights/last.pt", epoch + 1, optimizer, scheduler)
+            
             model.eval()
             
             val_loss = test_error()
             if val_loss < best_val:
                 best_val = val_loss
-                save_OUT("replication_data/weights/best.pt", epoch + 1)
+                
+                model.save("replication_data/weights/best.pt", epoch + 1, optimizer, scheduler)
 
             log_epochs.append(epoch)
             train_losses.append(loss.item())
@@ -153,7 +145,8 @@ if __name__ == "__main__":
                           "BC Loss": bc_losses, "Res Loss": res_losses,
                           "Test L2 Error": val_losses}).to_csv("replication_data/logs/log.csv", index = False)
 
-    save_OUT("replication_data/weights/final.pt", n_epochs)
+    model.save("replication_data/weights/final.pt", n_epochs, optimizer, scheduler)
+    
     table = pd.DataFrame({"Epoch": log_epochs,
                           "Train Loss": train_losses,
                           "IC Loss": ic_losses,
