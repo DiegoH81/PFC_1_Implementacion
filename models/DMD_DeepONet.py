@@ -29,6 +29,8 @@ class DMDPart:
 class DMD_DeepONet(nn.Module):
     def __init__(self, branch_dim, modes_dim, dynamics_dim, trunk_dim):
         super().__init__()
+        self.config = dict(branch_dim = branch_dim, modes_dim = modes_dim,
+                           dynamics_dim = dynamics_dim, trunk_dim = trunk_dim)
         self.branch = self.make_mlp(branch_dim)
         self.branch_dmd_modes = self.make_mlp(modes_dim)
         self.branch_dmd_dynamics = self.make_mlp(dynamics_dim)
@@ -49,3 +51,13 @@ class DMD_DeepONet(nn.Module):
                  * self.branch_dmd_dynamics(dynamics)).sum(dim = 1)
         y_tr = self.trunk(coords)
         return (b0 * y_dmd) @ y_tr.T + self.bias
+    
+    def save(self, path, **extra):
+        torch.save({"model": self.state_dict(), "config": self.config, **extra}, path)
+
+    @classmethod
+    def load(cls, path, device = "cpu"):
+        checkpoint = torch.load(path, map_location = device)
+        net = cls(**checkpoint["config"]).to(device)
+        net.load_state_dict(checkpoint["model"])
+        return net.eval()

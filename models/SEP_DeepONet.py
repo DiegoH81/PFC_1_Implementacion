@@ -4,8 +4,6 @@ from torch.func import jvp
 import numpy as np
 import pandas as pd
 
-
-
 def derivate(net, s):
     tangent = torch.ones_like(s)
     
@@ -19,6 +17,7 @@ def derivate(net, s):
 class SEP_DeepONet(nn.Module):
     def __init__(self, branch_dim, trunk_dim, rank):
         super().__init__()
+        self.config = dict(branch_dim = branch_dim, trunk_dim = trunk_dim, rank = rank)
         self.latent_dim = branch_dim[-1]
         self.rank = rank
         
@@ -55,3 +54,18 @@ class SEP_DeepONet(nn.Module):
     def forward(self, init, x, y, t, alpha):
         return self.contract(self.branch_net(init), self.trunk_x(x), self.trunk_y(y),
                              self.trunk_t(t), self.trunk_alpha(alpha)) + self.output_bias
+    
+    def save(self, path, **extra):
+        torch.save({"model": self.state_dict(), "config": self.config, **extra}, path)
+
+    @classmethod
+    def load(cls, path, device = "cpu"):
+        checkpoint = torch.load(path, map_location = device)
+        config = checkpoint["config"]
+        if "hidden" in config:
+            h = config["hidden"]
+            config = dict(branch_dim = [1, h, h, h, h, h, config["latent_dim"]],
+                          trunk_dim = [1, h, h, h, h, h, config["latent_dim"]], rank = config["rank"])
+        net = cls(**config).to(device)
+        net.load_state_dict(checkpoint["model"])
+        return net.eval()
