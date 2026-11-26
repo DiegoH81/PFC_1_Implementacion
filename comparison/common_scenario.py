@@ -35,6 +35,27 @@ for name, alpha_mm2s in MATERIALS_alpha.items():
     alpha_m2s = alpha_mm2s / 1000000.0
     MATERIALS[name] = alpha_m2s * ( units_in_1_m**2 / t_units_in_1_s)
 
+# train
+VAL_ALPHAS = np.logspace(np.log10(ALPHA_MIN), np.log10(ALPHA_MAX), 10)
+N_VAL_PER_ALPHA = 5
+SEED_VAL = 777
+
+def get_val_set():
+    make_dirs()
+    val = {}
+    
+    for i, alpha in enumerate(VAL_ALPHAS):
+        path = f"{COMP_DATA}/val_{i}.pkl"
+        
+        if os.path.exists(path):
+            val[i] = eq.HeatEquationDataset.load(path)
+            continue
+        
+        val[i] = make_dataset(float(alpha), N_VAL_PER_ALPHA, SEED_VAL + i)
+        val[i].save(path)
+    
+    return val
+
 
 # test
 N_TEST_PER_MATERIAL = 20
@@ -43,12 +64,6 @@ T0_MIN = 0.1
 SEED_TEST = 2006
 
 SOLVER_MODE = "CONST"
-
-
-OUT_DIR = "OUT_COMPARISON"
-TEST_PATH = f"{OUT_DIR}/test_set_T0min.pt"
-VAL_PATH = f"{OUT_DIR}/val_set.pt"
-
 
 def make_dataset(alpha, n, seed = None, accept = None):
     return eq.HeatEquationDataset(eq.HeatEquation2D, n, seed = seed, accept = accept,
@@ -61,8 +76,8 @@ def has_enough_heat(sol):
     return sol[0][1][1] >= T0_MIN
 
 def get_test_set():
+    make_dirs()
     test = {}
-    
     for i, (name, alpha) in enumerate(MATERIALS.items()):
         path = f"{COMP_DATA}/test_{i}.pkl"
         

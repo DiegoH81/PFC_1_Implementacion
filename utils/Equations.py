@@ -106,9 +106,9 @@ class HeatEquationDataset:
         self.accept = accept
         self.rng = np.random.default_rng(seed) if seed is not None else np.random
         
-        self.data = self._generate_data()
+        self.data = self.generate_data()
 
-    def _generate_data(self):
+    def generate_data(self):
         dataset = []
         
         while len(dataset) < self.num_samples:
@@ -116,7 +116,7 @@ class HeatEquationDataset:
             sol = eq.solve()
             
             if self.accept is None or self.accept(sol):
-                dataset.append(sol)
+                dataset.append(sol.astype(np.float32))
 
         return dataset
     
