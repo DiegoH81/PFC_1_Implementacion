@@ -116,8 +116,8 @@ if __name__ == "__main__":
 
     for j, name in enumerate(order):
         T0 = mean_T0[name]
-        errors.set_panel(0, j, Panel(mean_err_sep[name] / T0, cmap = "viridis", vmin = 0.0, vmax = err_max))
-        errors.set_panel(1, j, Panel(mean_err_dmd[name] / T0, cmap = "viridis", vmin = 0.0, vmax = err_max))
+        errors.set_panel(0, j, Panel(mean_err_sep[name] / T0, cmap = "viridis", vmin = 0.0, vmax = 0.1))
+        errors.set_panel(1, j, Panel(mean_err_dmd[name] / T0, cmap = "viridis", vmin = 0.0, vmax = 0.1))
 
     maps.save(f"{COMP_FIGS}/heat_map")
     errors.save(f"{COMP_FIGS}/heat_error")

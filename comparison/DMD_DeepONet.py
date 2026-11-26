@@ -38,14 +38,14 @@ if __name__ == "__main__":
     
     name = "DMD"
     
-    k = 50
+    k = 30
     dim_malla = DIM_MESH
     hidden = 100
     
     n_alphas = 40
     n_per_alpha = 25
     
-    n_epochs = 1000
+    n_epochs = 200
     log_every = 10
     learning_rate = 1e-3
     batch_size = 32
