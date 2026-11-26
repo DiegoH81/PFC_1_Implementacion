@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 from pydmd import DMD
 
 class DMDPart:
@@ -25,6 +26,10 @@ class DMDPart:
             dynamics.append(dmd.dynamics.real[i])
 
         return [modes, dynamics]
+    
+def get_relevant_data(sol, k, rank = 10):
+    modes, dynamics = DMDPart(sol[:k], rank).method()
+    return sol[0], np.array(modes), np.array(dynamics)
     
 class DMD_DeepONet(nn.Module):
     def __init__(self, branch_dim, modes_dim, dynamics_dim, trunk_dim):

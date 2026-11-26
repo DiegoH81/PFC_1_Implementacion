@@ -59,7 +59,6 @@ def get_val_set():
 
 # test
 N_TEST_PER_MATERIAL = 20
-NUM_VAL = 50
 T0_MIN = 0.1
 SEED_TEST = 2006
 
