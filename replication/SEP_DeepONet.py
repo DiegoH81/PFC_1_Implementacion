@@ -7,18 +7,16 @@ import pandas as pd
 import utils.Equations as eq
 import utils.Painter as Painter
 
+from utils.Paths import REPLICA_WEIGHTS, REPLICA_LOGS, make_dirs
+from models.SEP_DeepONet import SEP_DeepONet, derivate
 from models.SEP_DeepONet import SEP_DeepONet, derivate
 
-import os
-os.makedirs("replication_data", exist_ok = True)
-os.makedirs("replication_data/weights", exist_ok = True)
-os.makedirs("replication_data/logs", exist_ok = True)
-    
 if __name__ == "__main__": 
     torch.manual_seed(1234)
     np.random.seed(1234)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    make_dirs()
     
     alphas = [0.1, 0.3, 1.0]
     n_samples = 3
@@ -121,7 +119,7 @@ if __name__ == "__main__":
         scheduler.step()
 
         if (epoch + 1) % log_every == 0:            
-            model.save("replication_data/weights/last.pt", epoch + 1, optimizer, scheduler)
+            model.save(f"{REPLICA_WEIGHTS}/last.pt", epoch + 1, optimizer, scheduler)
             
             model.eval()
             
@@ -129,7 +127,7 @@ if __name__ == "__main__":
             if val_loss < best_val:
                 best_val = val_loss
                 
-                model.save("replication_data/weights/best.pt", epoch + 1, optimizer, scheduler)
+                model.save(f"{REPLICA_WEIGHTS}/best.pt", epoch + 1, optimizer, scheduler)
 
             log_epochs.append(epoch)
             train_losses.append(loss.item())
@@ -143,9 +141,9 @@ if __name__ == "__main__":
             
             pd.DataFrame({"Epoch": log_epochs, "Train Loss": train_losses, "IC Loss": ic_losses,
                           "BC Loss": bc_losses, "Res Loss": res_losses,
-                          "Test L2 Error": val_losses}).to_csv("replication_data/logs/log.csv", index = False)
+                          "Test L2 Error": val_losses}).to_csv(f"{REPLICA_LOGS}/log.csv", index = False)
 
-    model.save("replication_data/weights/final.pt", n_epochs, optimizer, scheduler)
+    model.save(f"{REPLICA_WEIGHTS}/final.pt", n_epochs, optimizer, scheduler)
     
     table = pd.DataFrame({"Epoch": log_epochs,
                           "Train Loss": train_losses,
@@ -153,5 +151,7 @@ if __name__ == "__main__":
                           "BC Loss": bc_losses,
                           "Res Loss": res_losses,
                           "Test L2 Error": val_losses})
-    table.to_csv("replication_data/logs/log_SEP.csv", index = False)
+    
+    
+    table.to_csv(f"{REPLICA_LOGS}/log_SEP.csv", index = False)
     print(table.to_string(index = False))
