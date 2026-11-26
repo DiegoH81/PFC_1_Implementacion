@@ -101,7 +101,9 @@ if __name__ == "__main__":
 
 
     # figures
-    col_labels = order
+    col_labels = []
+    for name in order:
+        col_labels.append(f"{name}\n" + rf"$\alpha_f$ = {MATERIALS_alpha[name]:g} mm$^2$/s")
 
     maps = Grid(3, len(order), ["Ground truth", "SEP-DeepONet", "DMD-DeepONet"], col_labels, r"$u/T_0$")
     errors = Grid(2, len(order), ["SEP-DeepONet", "DMD-DeepONet"], col_labels, r"$|\hat{u} - u|/T_0$")
