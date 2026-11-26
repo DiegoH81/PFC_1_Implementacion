@@ -1,15 +1,16 @@
 import abc
+import pickle
 import numpy as np
 
 class Equation():
     def __init__ (self, spatial_size,
-                  total_time: float, temporal_size: int, alpha: float):
+                  total_time: float, temporal_size: int, alpha: float,
+                  rng = np.random):
         
         self.total_time = total_time
         self.temporal_size = temporal_size
         self.alpha = alpha
-        
-        self.dt = self.total_time / self.temporal_size
+        self.rng = rng
         
         self.spatial_size = tuple(spatial_size)
         self.ndim = len(self.spatial_size)
@@ -24,9 +25,9 @@ class Equation():
 
 class HeatEquation2D(Equation):
     def __init__(self, spatial_size,
-                 total_time: float, temporal_size: int, alpha: float, mode: str):
+                 total_time: float, temporal_size: int, alpha: float, mode: str, rng = np.random):
         
-        super().__init__(spatial_size, total_time, temporal_size, alpha)
+        super().__init__(spatial_size, total_time, temporal_size, alpha, rng)
         self.num_x, self.num_y = self.spatial_size[0], self.spatial_size[1]
         
         self.dx = 1.0 / (self.num_x - 1)
@@ -36,7 +37,7 @@ class HeatEquation2D(Equation):
         
     def initialize_equation(self):
         if self.mode == "CONST":
-            T0 = np.random.uniform(0, 1)
+            T0 = self.rng.uniform(0, 1)
             u0 = np.full((self.num_y, self.num_x), T0)
             u0[0, :] = 0.0
             u0[-1, :] = 0.0
@@ -49,7 +50,7 @@ class HeatEquation2D(Equation):
             corners = [(0, 0), (0, self.num_y-1), (self.num_x-1, 0), (self.num_x-1, self.num_y-1)]
 
             for (i, j) in corners:
-                u0[j, i] = np.random.uniform(-25, 25)
+                u0[j, i] = self.rng.uniform(-25, 25)
                 
             u0[:, 0] = np.linspace(u0[0, 0], u0[-1, 0], self.num_y)
             u0[:, -1] = np.linspace(u0[0, -1], u0[-1, -1], self.num_y)
@@ -98,22 +99,43 @@ class HeatEquation2D(Equation):
         return u
 
 class HeatEquationDataset:
-    def __init__(self, equation_class, num_samples: int, **kwargs):
+    def __init__(self, equation_class, num_samples: int, seed = None, accept = None, **kwargs):
         self.num_samples = num_samples
         self.equation_class = equation_class
-        self.kwargs = ( kwargs )
+        self.kwargs = kwargs
+        self.accept = accept
+        self.rng = np.random.default_rng(seed) if seed is not None else np.random
         
-        self.data = self._generate_data()
+        self.data = self.generate_data()
 
-    def _generate_data(self):
+    def generate_data(self):
         dataset = []
         
-        for _ in range(self.num_samples):
-            eq = self.equation_class(**self.kwargs)
-            
+        while len(dataset) < self.num_samples:
+            eq = self.equation_class(rng = self.rng, **self.kwargs)
             sol = eq.solve()
-            dataset.append(sol)
+            
+            if self.accept is None or self.accept(sol):
+                dataset.append(sol.astype(np.float32))
 
+        return dataset
+    
+    def save(self, path):
+        with open(path, "wb") as f:
+            pickle.dump({"equation_class": self.equation_class, "kwargs": self.kwargs, "data": self.data}, f)
+
+    @classmethod
+    def load(cls, path):
+        with open(path, "rb") as f:
+            saved = pickle.load(f)
+        
+        dataset = cls.__new__(cls)
+        dataset.equation_class = saved["equation_class"]
+        dataset.kwargs = saved["kwargs"]
+        dataset.data = saved["data"]
+        dataset.num_samples = len(dataset.data)
+        dataset.accept = None
+        dataset.rng = None
         return dataset
     
     def __len__(self):

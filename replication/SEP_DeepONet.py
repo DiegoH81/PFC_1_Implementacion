@@ -4,77 +4,19 @@ from torch.func import jvp
 import numpy as np
 import pandas as pd
 
-import Equations as eq
-import Painter
+import utils.Equations as eq
+import utils.Painter as Painter
 
-import os
-os.makedirs("ckpt", exist_ok = True)
+from utils.Paths import REPLICA_WEIGHTS, REPLICA_LOGS, make_dirs
+from models.SEP_DeepONet import SEP_DeepONet, derivate
+from models.SEP_DeepONet import SEP_DeepONet, derivate
 
-
-def derivate(net, s):
-    tangent = torch.ones_like(s)
-    
-    def inner(z):
-        return jvp(net, (z,), (tangent,))
-    
-    (f, df), (_, d2f) = jvp(inner, (s,), (tangent,))
-    
-    return f, df, d2f
-
-def save_ckpt(path, epoch):
-    torch.save({"epoch": epoch,
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "scheduler": scheduler.state_dict(),
-                "config": {"hidden": hidden, "latent_dim": latent_dim, "rank": rank}},
-               path)
-
-class SEP_DeepONet(nn.Module):
-    def __init__(self, branch_dim, trunk_dim, rank):
-        super().__init__()
-        self.latent_dim = branch_dim[-1]
-        self.rank = rank
-        
-        trunk_dim_with_rank = trunk_dim[:-1] + [trunk_dim[-1] * rank]
-        self.branch_net = self.make_mlp(branch_dim)
-        self.trunk_t = self.make_mlp(trunk_dim_with_rank)
-        self.trunk_x = self.make_mlp(trunk_dim_with_rank)
-        self.trunk_y = self.make_mlp(trunk_dim_with_rank)
-        self.trunk_alpha = self.make_mlp(trunk_dim_with_rank)
-
-        self.output_bias = nn.Parameter(torch.zeros(1))
-    
-    def make_mlp(self, dims):
-        layers = []
-        for i in range(len(dims) - 1):
-            layers.append(nn.Linear(dims[i], dims[i+1]))
-            if i < len(dims) - 2:
-                layers.append(nn.Tanh())
-        return nn.Sequential(*layers)
-    
-    def contract(self, f_init, f_x, f_y, f_t, f_a):
-        p = self.latent_dim
-        r = self.rank
-        
-        f_x = f_x.reshape(-1, p, r)
-        f_y = f_y.reshape(-1, p, r)
-        f_t = f_t.reshape(-1, p, r)
-        f_a = f_a.reshape(-1, p, r)
-
-        bx  = torch.einsum('bp,xpr->bxpr', f_init, f_x)
-        yta = torch.einsum('ypr,tpr,apr->ytapr', f_y, f_t, f_a)
-        return torch.einsum('bxpr,ytapr->bxyta', bx, yta)
-
-    def forward(self, init, x, y, t, alpha):
-        return self.contract(self.branch_net(init), self.trunk_x(x), self.trunk_y(y),
-                             self.trunk_t(t), self.trunk_alpha(alpha)) + self.output_bias
-    
-    
 if __name__ == "__main__": 
     torch.manual_seed(1234)
     np.random.seed(1234)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    make_dirs()
     
     alphas = [0.1, 0.3, 1.0]
     n_samples = 3
@@ -98,10 +40,6 @@ if __name__ == "__main__":
                                                num_samples = n_samples, spatial_size = (dim_malla, dim_malla),
                                                total_time = total_time, temporal_size = t_size,
                                                alpha = a, mode = "CONST"))
-        
-    
-    system_painter = Painter.HeatEquationPainter()
-    #system_painter.plot_solution(datasets[0][10], 10, "Testing draw")
     
     print("Processing test data")
     tests = []
@@ -180,14 +118,16 @@ if __name__ == "__main__":
         optimizer.step()
         scheduler.step()
 
-        if (epoch + 1) % log_every == 0:
-            save_ckpt("ckpt/last.pt", epoch + 1)
+        if (epoch + 1) % log_every == 0:            
+            model.save(f"{REPLICA_WEIGHTS}/last.pt", epoch + 1, optimizer, scheduler)
+            
             model.eval()
             
             val_loss = test_error()
             if val_loss < best_val:
                 best_val = val_loss
-                save_ckpt("ckpt/best.pt", epoch + 1)
+                
+                model.save(f"{REPLICA_WEIGHTS}/best.pt", epoch + 1, optimizer, scheduler)
 
             log_epochs.append(epoch)
             train_losses.append(loss.item())
@@ -201,14 +141,17 @@ if __name__ == "__main__":
             
             pd.DataFrame({"Epoch": log_epochs, "Train Loss": train_losses, "IC Loss": ic_losses,
                           "BC Loss": bc_losses, "Res Loss": res_losses,
-                          "Test L2 Error": val_losses}).to_csv("ckpt/log.csv", index = False)
+                          "Test L2 Error": val_losses}).to_csv(f"{REPLICA_LOGS}/log.csv", index = False)
 
-    save_ckpt("ckpt/final.pt", n_epochs)
+    model.save(f"{REPLICA_WEIGHTS}/final.pt", n_epochs, optimizer, scheduler)
+    
     table = pd.DataFrame({"Epoch": log_epochs,
                           "Train Loss": train_losses,
                           "IC Loss": ic_losses,
                           "BC Loss": bc_losses,
                           "Res Loss": res_losses,
                           "Test L2 Error": val_losses})
-    table.to_csv("ckpt/log.csv", index = False)
+    
+    
+    table.to_csv(f"{REPLICA_LOGS}/log_SEP.csv", index = False)
     print(table.to_string(index = False))
